@@ -119,6 +119,8 @@ public final class CodeArea extends AbstractCodeArea {
 		popup.addSeparator();
 		popup.add(new FridaAction(this));
 		popup.add(new XposedAction(this));
+		popup.addSeparator();
+		popup.add(new AppdbgAction(this));
 
 		// move caret on mouse right button click
 		popup.getMenu().addPopupMenuListener(new DefaultPopupMenuListener() {
