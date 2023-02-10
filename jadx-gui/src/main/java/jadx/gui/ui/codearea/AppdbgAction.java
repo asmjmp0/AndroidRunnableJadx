@@ -45,7 +45,7 @@ public class AppdbgAction extends JNodeAction{
 			return;
 		}
 		try {
-			AppdbgWindow window = new AppdbgWindow(mw,path);
+			AppdbgWindow window = new AppdbgWindow(mw,path,node);
 			window.open();
 		}catch (Exception e){
 			e.printStackTrace();
