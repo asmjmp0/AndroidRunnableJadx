@@ -27,7 +27,7 @@ import static javax.swing.KeyStroke.getKeyStroke;
 public class AppdbgAction extends JNodeAction{
 
 	public AppdbgAction(CodeArea codeArea) {
-		super("run with appdbg", codeArea);
+		super("run with appdbg (r)", codeArea);
 		addKeyBinding(getKeyStroke(KeyEvent.VK_R, 0), "trigger appdbg runner");
 	}
 

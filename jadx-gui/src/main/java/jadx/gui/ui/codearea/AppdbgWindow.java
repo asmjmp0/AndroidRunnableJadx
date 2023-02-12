@@ -2,6 +2,7 @@ package jadx.gui.ui.codearea;
 
 import jadx.api.JavaMethod;
 import jadx.core.dex.instructions.args.ArgType;
+import jadx.core.dex.instructions.args.PrimitiveType;
 import jadx.gui.treemodel.JMethod;
 import jadx.gui.treemodel.JNode;
 import jadx.gui.ui.MainWindow;
@@ -15,6 +16,7 @@ import jmp0.app.AndroidEnvironment;
 import jmp0.app.classloader.ClassLoadedCallbackBase;
 import jmp0.app.classloader.XAndroidClassLoader;
 import jmp0.app.interceptor.unidbg.UnidbgInterceptor;
+import jmp0.conf.CommonConf;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.RandomStringGenerator;
 import org.jetbrains.annotations.NotNull;
@@ -38,6 +40,8 @@ import java.util.List;
 public class AppdbgWindow extends JFrame {
 	private final MainWindow mainWindow;
 	private final String path;
+
+	private AndroidEnvironment ae;
 
 	private final JNode node;
 
@@ -118,13 +122,28 @@ public class AppdbgWindow extends JFrame {
 			stringBuilder.append("//you should initialize the class by yourself!\n");
 		}
 		stringBuilder.append("Object ins = null;\n")
-				.append(String.format("java.lang.reflect.Method m = cz.getDeclaredMethod(\"%s\",clzs);\n",methodName));
-		stringBuilder.append("java.util.List objs = new java.util.LinkedList();\n")
-				.append("// you need to fill the input with 'add' method\n\n")
-				.append("// objs.add();\n\n")
-				.append("Object[] os = objs.toArray();\n")
-				.append(String.format("%s result = (%s) m.invoke(ins,os);\n",this.getArgTypeString(returnType),this.getArgTypeString(returnType)))
-				.append("return result.toString();\n");
+						.append(String.format("java.lang.reflect.Method m = cz.getDeclaredMethod(\"%s\",clzs);\n",methodName))
+						.append("m.setAccessible(true);\n");
+		stringBuilder.append("// you need to fill the array\n\n")
+				.append("Object[] os = new Object[]{};\n\n");
+		String returnTypeName =  this.getArgTypeString(returnType);
+		String typeString = this.getArgTypeString(returnType);
+		if (typeString.equals("int")){
+			typeString = "Integer";
+		} else typeString = typeString.substring(0, 1).toUpperCase() + typeString.substring(1);
+		if (returnTypeName.equals("void")){
+			stringBuilder.append("m.invoke(ins,os);\n")
+					.append("return \"void return type,nothing returned.\";\n");
+		}else {
+			if (returnType.isPrimitive()){
+				stringBuilder.append(String.format("%s result = (%s) m.invoke(ins,os);\n",typeString, typeString))
+						.append("return result.toString();\n");
+			}else {
+				stringBuilder.append(String.format("%s result = (%s) m.invoke(ins,os);\n",this.getArgTypeString(returnType),this.getArgTypeString(returnType)))
+						.append("return result.toString();\n");
+			}
+
+		}
 		return stringBuilder.toString();
 	}
 
@@ -148,14 +167,17 @@ public class AppdbgWindow extends JFrame {
 	}
 
 	private void doWork(){
-		AndroidEnvironment ae = performApk(this.path);
+		if (ae == null){
+			System.out.println("AndroidEnvironment not initialized yet,please click init button first!");
+			return;
+		}
 		RandomStringGenerator builder = new RandomStringGenerator.Builder().build();
 		String className = "jmp0.jadx.call.CallClass"+builder.generate(4);
 		try {
 			byte[] bs = this.makeRandomClassWithMethod(className,inputTextArea.getText());
 			ae.getClassLoader().xDefineClass(null,bs,0,bs.length);
 			String ret = (String) ae.findClass(className).getDeclaredMethod("run",AndroidEnvironment.class).invoke(null,ae);
-			this.outputTextArea.append(ret + '\n');
+			this.outputTextArea.append("result=>"+ ret + '\n');
 		}catch (Exception e){
 			e.printStackTrace();
 		}
@@ -198,6 +220,12 @@ public class AppdbgWindow extends JFrame {
 		inputTextArea.setSize(new Dimension(800,250));
 		inputTextArea.setLineWrap(true);
 		JButton button = new JButton("run");
+		JButton initBtn = new JButton("init");
+		JPanel jPanel = new JPanel();
+		jPanel.setLayout(new BoxLayout(jPanel, BoxLayout.X_AXIS));
+		jPanel.add(initBtn);
+		jPanel.add(button);
+
 		this.outputTextArea = new JTextArea();
 		outputTextArea.setSize(new Dimension(800,250));
 
@@ -208,12 +236,30 @@ public class AppdbgWindow extends JFrame {
 			}
 		});
 
+		initBtn.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				System.out.println("initialize AndroidEnvironment now! please wait for a while.");
+				new Thread(new Runnable() {
+					@Override
+					public void run() {
+						try {
+							ae = performApk(path);
+							System.out.println("initialize completed! AndroidEnvironment instance:" + ae);
+						}catch (SecurityException securityException){
+							System.out.println("initialize failed, please use the jdk from appdbg-JDK,and clean the temp dir in jadx installed dir.");
+						}
+					}
+				}).start();
+			}
+		});
+
 		JScrollPane inputScrollPane = new JScrollPane(inputTextArea,ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,ScrollPaneConstants.HORIZONTAL_SCROLLBAR_ALWAYS);
 		JScrollPane outputScrollPane = new JScrollPane(outputTextArea,ScrollPaneConstants.VERTICAL_SCROLLBAR_ALWAYS,ScrollPaneConstants.HORIZONTAL_SCROLLBAR_ALWAYS);
 		JPanel panel = new JPanel();
 		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 		panel.add(inputScrollPane);
-		panel.add(button);
+		panel.add(jPanel);
 		panel.add(outputScrollPane);
 		add(panel);
 		setPreferredSize(new Dimension(1000,500));
