@@ -139,7 +139,7 @@ public class AppdbgWindow extends JFrame {
 				stringBuilder.append(String.format("%s result = (%s) m.invoke(ins,os);\n",typeString, typeString))
 						.append("return result.toString();\n");
 			}else {
-				stringBuilder.append(String.format("%s result = (%s) m.invoke(ins,os);\n",this.getArgTypeString(returnType),this.getArgTypeString(returnType)))
+				stringBuilder.append("Object result = m.invoke(ins,os);\n")
 						.append("return result.toString();\n");
 			}
 
@@ -248,6 +248,9 @@ public class AppdbgWindow extends JFrame {
 							System.out.println("initialize completed! AndroidEnvironment instance:" + ae);
 						}catch (SecurityException securityException){
 							System.out.println("initialize failed, please use the jdk from appdbg-JDK,and clean the temp dir in jadx installed dir.");
+							securityException.printStackTrace();
+						}catch (Throwable throwable){
+							throwable.printStackTrace();
 						}
 					}
 				}).start();
