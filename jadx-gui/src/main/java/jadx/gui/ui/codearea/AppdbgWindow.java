@@ -2,7 +2,6 @@ package jadx.gui.ui.codearea;
 
 import jadx.api.JavaMethod;
 import jadx.core.dex.instructions.args.ArgType;
-import jadx.core.dex.instructions.args.PrimitiveType;
 import jadx.gui.treemodel.JMethod;
 import jadx.gui.treemodel.JNode;
 import jadx.gui.ui.MainWindow;
@@ -16,7 +15,6 @@ import jmp0.app.AndroidEnvironment;
 import jmp0.app.classloader.ClassLoadedCallbackBase;
 import jmp0.app.classloader.XAndroidClassLoader;
 import jmp0.app.interceptor.unidbg.UnidbgInterceptor;
-import jmp0.conf.CommonConf;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.RandomStringGenerator;
 import org.jetbrains.annotations.NotNull;
@@ -85,7 +83,24 @@ public class AppdbgWindow extends JFrame {
 	public void open(){
 		initUI();
 		redirectOE();
+		checkDeobfuscationOn();
 		setDefaultText();
+	}
+
+	private void checkDeobfuscationOn(){
+		AppdbgWindow window = this;
+		boolean deobfuscationOn = this.mainWindow.getSettings().isDeobfuscationOn();
+		if (deobfuscationOn){
+			showDialog("appdbg runner don't support deobfuscation,\nclick yes button to disable deobfuscation and reopen.",
+					new Runnable() {
+						@Override
+						public void run() {
+							mainWindow.getSettings().setDeobfuscationOn(false);
+							mainWindow.reopen();
+							window.dispose();
+						}
+					}, null);
+		}
 	}
 
 	private String getArgTypeString(ArgType argType){
@@ -99,23 +114,61 @@ public class AppdbgWindow extends JFrame {
 		else return "";
 	}
 
+	private String getObjectInitString(ArgType argType){
+		if (argType.isObject()){
+			switch (argType.getObject()){
+				case "java.lang.String":
+					return "new String(\"\")";
+
+			}
+			return "/**fill by your self**/";
+		}else if (argType.isPrimitive()){
+			switch (argType.getPrimitiveType().getLongName()){
+				case "int":
+					return "new Integer(0)";
+				case "short":
+					return "new Short((short) 0)";
+				case "long":
+					return "new Long(0L)";
+				case "float":
+					return "new Float(0.0f)";
+				case "double":
+					return "new Double(0.0d)";
+				case "byte":
+					return "new Byte((byte) 0)";
+				case "boolean":
+					return "new Boolean(false)";
+				case "char":
+					return "new Character(' ')";
+			}
+		}else if (argType.isArray()){
+			return "new " + this.getArgTypeString(argType.getArrayElement()) +"[]{}";
+		}
+		return "/**fill by your self**/";
+	}
+
 	private String generateBody(String className, String methodName, List<ArgType> argTypeList,ArgType returnType,boolean isStatic){
 		//setAccessible
 		StringBuilder stringBuilder = new StringBuilder();
 		stringBuilder.append(String.format("Class cz = ae.findClass(\"%s\");\n",className))
 				.append("//if the type is defined in apk, you should use 'ae.findClass()' to get\n");
-		String clzsFmt = "";
+		String clzsFmt;
+		String objFmt;
 		if (argTypeList.size() == 0){
 			clzsFmt = String.format("Class[] clzs = new Class[]{%s};\n", StringUtils.repeat("%s,",argTypeList.size()));
+			objFmt = String.format("Object[] os = new Object[]{%s};\n", StringUtils.repeat("%s,",argTypeList.size()));
 		}else {
 			String repeat = StringUtils.repeat("%s,",argTypeList.size());
 			repeat = repeat.substring(0,repeat.length() - 1);
 			clzsFmt = String.format("Class[] clzs = new Class[]{%s};\n", repeat);
+			objFmt = String.format("Object[] os = new Object[]{%s};\n", repeat);
 		}
 
 		List<String> clzStrs = new LinkedList<>();
+		List<String> objsStrs = new LinkedList<>();
 		for (ArgType argType:argTypeList){
 			clzStrs.add(this.getArgTypeString(argType)+".class");
+			objsStrs.add(this.getObjectInitString(argType));
 		}
 		stringBuilder.append(String.format(clzsFmt,clzStrs.toArray()));
 		if (!isStatic){
@@ -125,7 +178,7 @@ public class AppdbgWindow extends JFrame {
 						.append(String.format("java.lang.reflect.Method m = cz.getDeclaredMethod(\"%s\",clzs);\n",methodName))
 						.append("m.setAccessible(true);\n");
 		stringBuilder.append("// you need to fill the array\n\n")
-				.append("Object[] os = new Object[]{};\n\n");
+				.append(String.format(objFmt,objsStrs.toArray()));
 		String returnTypeName =  this.getArgTypeString(returnType);
 		String typeString = this.getArgTypeString(returnType);
 		if (typeString.equals("int")){
@@ -205,10 +258,50 @@ public class AppdbgWindow extends JFrame {
 		CtClass ctClass = ClassPool.getDefault().makeClass(className);
 		ctClass.addMethod(CtMethod.make(methodContent,ctClass));
 		return ctClass.toBytecode();
-	};
+	}
+
+	private void showDialog(String content,Runnable rightRun,Runnable falseRun){
+		JFrame jFrame = new JFrame();
+		JTextArea textArea = new JTextArea(content,3,6);
+		textArea.setLineWrap(true);
+		textArea.setEditable(false);
+		JButton rightButton = new JButton("yes");
+		JButton falseButton = new JButton("no");
+		rightButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				if (rightRun!=null)
+					rightRun.run();
+				jFrame.dispose();
+			}
+		});
+
+		falseButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				if (falseRun!=null)
+					falseRun.run();
+				jFrame.dispose();
+			}
+		});
+		JPanel buttonPanel = new JPanel();
+		buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.X_AXIS));
+		buttonPanel.add(rightButton);
+		buttonPanel.add(falseButton);
+		JPanel panel = new JPanel();
+		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+		panel.add(textArea);
+		panel.add(buttonPanel);
+		jFrame.add(panel);
+		jFrame.setSize(400, 100);
+		jFrame.setLocationRelativeTo(null);
+		jFrame.setVisible(true);
+
+	}
 
 
 	private void initUI(){
+		setTitle("Appdbg Runner");
 		addWindowListener(new WindowAdapter() {
 			@Override
 			public void windowClosing(WindowEvent e) {
